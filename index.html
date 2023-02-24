@@ -144,6 +144,7 @@
 
                     document.querySelector('.startText').innerText =
                         JSON.stringify(startPosition);
+                    document.querySelector('.computeSuccess').innerText = '';
 
                     break;
 
@@ -152,6 +153,7 @@
 
                     document.querySelector('.endText').innerText =
                         JSON.stringify(endPosition);
+                    document.querySelector('.computeSuccess').innerText = '';
 
                     break;
             }
@@ -221,7 +223,13 @@
             helper: true,
             conditionerY: 2.6,
             computeArea: () => {
-                ssp.viewport.recastJSPlugin.createNavMesh(undefined, navMeshParams);
+                const meshes =
+                    ssp.viewport.scener.intersectsList.meshOfModelList
+
+                ssp.viewport.recastJSPlugin.createNavMesh(
+                    meshes,
+                    navMeshParams
+                );
 
                 helperChange();
             },
@@ -264,7 +272,7 @@
                 if (!computedTopology) {
                     alert('请先计算路径');
 
-                    return
+                    return;
                 }
 
                 patrolControls.start(computedTopology, {
