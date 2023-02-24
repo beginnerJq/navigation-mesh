@@ -59,7 +59,9 @@
             <button class="computePath">计算路径</button><span class="computeSuccess"></span>
         </div>
     </div>
-    <div class="tips">调整<strong>空调高度</strong>后，<strong>重新计算导航区域</strong>查看设备离地高度对导航区域的影响</div>
+    <div class="tips">
+        调整<strong>空调高度</strong>后，<strong>重新计算导航区域</strong>查看设备离地高度对导航区域的影响
+    </div>
     <div id="view" style="width: 100vw; height: 100vh"></div>
 
     <script type="importmap">
@@ -71,8 +73,9 @@
     </script>
     <script type="module">
         import SoonSpace from './index.esm.js';
+        import PatrolControlsPlugin from './patrol-controls.js';
         import Soonmanager2SyncPlugin from './plugin-soonmanager2-sync.js';
-        import { GUI } from './gui.js'
+        import { GUI } from './gui.js';
 
         const ssp = (window.ssp = new SoonSpace({
             el: '#view',
@@ -92,6 +95,11 @@
                 },
             },
         }));
+
+        const patrolControls = ssp.registerPlugin(
+            PatrolControlsPlugin,
+            'patrolControls'
+        );
 
         const soonmanager2SyncPlugin = (window.soonmanager2SyncPlugin =
             ssp.registerPlugin(Soonmanager2SyncPlugin, 'soonmanager2SyncPlugin'));
@@ -115,7 +123,7 @@
             maxVertsPerPoly: 5,
             detailSampleDist: 6,
             detailSampleMaxError: 1,
-        }
+        };
 
         let selectState = null;
         let startPosition = null;
@@ -148,6 +156,8 @@
                     break;
             }
         });
+
+        let computedTopology = null;
 
         document.querySelector('.computePath').addEventListener('click', () => {
             if (!startPosition) {
@@ -184,9 +194,9 @@
                 position: path,
             }));
 
-            ssp.clearTopology();
+            if (computedTopology) ssp.removeObject(computedTopology);
 
-            ssp.createTopology({
+            computedTopology = ssp.createTopology({
                 id: 'auto_path',
                 name: 'auto_path',
                 nodes,
@@ -203,9 +213,9 @@
         });
 
         /**
-         * gui 
+         * gui
          */
-        const gui = new GUI()
+        const gui = new GUI();
 
         const naviParams = {
             helper: true,
@@ -213,36 +223,64 @@
             computeArea: () => {
                 ssp.viewport.recastJSPlugin.createNavMesh(undefined, navMeshParams);
 
-                helperChange()
-            }
-        }
+                helperChange();
+            },
+        };
 
-        let debugMesh = null
+        let debugMesh = null;
 
         const helperChange = () => {
-
-            if (debugMesh) ssp.removeObject(debugMesh)
+            if (debugMesh) ssp.removeObject(debugMesh);
 
             if (naviParams.helper) {
                 debugMesh = ssp.viewport.recastJSPlugin.createDebugNavMesh();
             }
-        }
+        };
 
         const conditionerYChange = () => {
-            const airConditioners = ssp.getObjectByName('中央空调')
+            const airConditioners = ssp.getObjectByName('中央空调');
 
-            airConditioners.forEach(airConditioner => {
-                airConditioner.position.y = naviParams.conditionerY
-            })
-            ssp.render()
-        }
-        conditionerYChange()
+            airConditioners.forEach((airConditioner) => {
+                airConditioner.position.y = naviParams.conditionerY;
+            });
+            ssp.render();
+        };
+        conditionerYChange();
 
-        naviParams.computeArea()
+        naviParams.computeArea();
 
-        gui.add(naviParams, 'helper').name('导航区域').onChange(helperChange)
-        gui.add(naviParams, 'conditionerY', 1, 4.3, 0.1).name('空调高度').onChange(conditionerYChange)
-        gui.add(naviParams, 'computeArea').name('重新计算导航区域')
+        gui.add(naviParams, 'helper').name('导航区域').onChange(helperChange);
+        gui
+            .add(naviParams, 'conditionerY', 1, 4.3, 0.1)
+            .name('空调高度')
+            .onChange(conditionerYChange);
+        gui.add(naviParams, 'computeArea').name('重新计算导航区域');
+
+        const patrol = gui.addFolder('路径巡检');
+        patrol.open();
+
+        const patrolParams = {
+            start: () => {
+                if (!computedTopology) {
+                    alert('请先计算路径');
+
+                    return
+                }
+
+                patrolControls.start(computedTopology, {
+                    flyToStartPoint: false,
+                    eyeHeight: 1.5,
+                    naviSpeed: 0.01,
+                    rotateSpeed: 0.4,
+                });
+            },
+            stop: () => {
+                patrolControls.stop();
+            },
+        };
+
+        patrol.add(patrolParams, 'start').name('开始巡检');
+        patrol.add(patrolParams, 'stop').name('结束巡检');
     </script>
 </body>
 
