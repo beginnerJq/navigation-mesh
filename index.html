@@ -20,20 +20,46 @@
             z-index: 1;
         }
 
+        .wrap {
+            display: flex;
+            flex-direction: column;
+            row-gap: 1rem;
+            align-items: self-start;
+        }
+
         .computeSuccess {
             color: #2d00ff;
+        }
+
+        .tips {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            column-gap: 0.5rem;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            right: 0;
+            margin: auto;
+            width: 50vw;
+            height: 3rem;
         }
     </style>
 </head>
 
 <body>
     <div class="interactive">
-        <div><button class="start">选择起点（点击模型选择位置）</button><span class="startText"></span></div>
-        <div><button class="end">选择终点（点击模型选择位置）</button><span class="endText"></span></div>
-        <div style="display: flex;column-gap: 1rem;">
+        <div class="wrap">
+            <button class="start">选择起点（点击模型选择位置）</button><span class="startText"></span>
+        </div>
+        <div class="wrap">
+            <button class="end">选择终点（点击模型选择位置）</button><span class="endText"></span>
+        </div>
+        <div class="wrap">
             <button class="computePath">计算路径</button><span class="computeSuccess"></span>
         </div>
     </div>
+    <div class="tips">调整<strong>空调高度</strong>后，<strong>重新计算导航区域</strong>查看设备离地高度对导航区域的影响</div>
     <div id="view" style="width: 100vw; height: 100vh"></div>
 
     <script type="importmap">
@@ -46,6 +72,7 @@
     <script type="module">
         import SoonSpace from './index.esm.js';
         import Soonmanager2SyncPlugin from './plugin-soonmanager2-sync.js';
+        import { GUI } from './gui.js'
 
         const ssp = (window.ssp = new SoonSpace({
             el: '#view',
@@ -71,15 +98,15 @@
 
         soonmanager2SyncPlugin.setPath('./深灿A区四层');
 
-        await soonmanager2SyncPlugin.loadScene({ syncProperties: true })
+        await soonmanager2SyncPlugin.loadScene({ syncProperties: true });
 
         await ssp.flyMainViewpoint();
 
-        ssp.viewport.recastJSPlugin.createNavMesh(undefined, {
+        const navMeshParams = {
             cs: 0.2,
             ch: 0.1,
             walkableSlopeAngle: 89,
-            walkableHeight: 1,
+            walkableHeight: 15,
             walkableClimb: 2,
             walkableRadius: 2,
             maxSimplificationError: 1.3,
@@ -88,59 +115,68 @@
             maxVertsPerPoly: 5,
             detailSampleDist: 6,
             detailSampleMaxError: 1,
-        });
-        ssp.viewport.recastJSPlugin.createDebugNavMesh();
+        }
 
-
-        let selectState = null
-        let startPosition = null
-        let endPosition = null
+        let selectState = null;
+        let startPosition = null;
+        let endPosition = null;
 
         document.querySelector('.start').addEventListener('click', () => {
-            selectState = 'start'
-        })
+            selectState = 'start';
+        });
 
         document.querySelector('.end').addEventListener('click', () => {
-            selectState = 'end'
-        })
+            selectState = 'end';
+        });
 
         ssp.signals.selectPosition.add((p) => {
             switch (selectState) {
                 case 'start':
                     startPosition = ssp.viewport.recastJSPlugin.getClosestPoint(p);
 
-                    document.querySelector('.startText').innerText = JSON.stringify(startPosition)
+                    document.querySelector('.startText').innerText =
+                        JSON.stringify(startPosition);
 
-                    break
+                    break;
 
                 case 'end':
                     endPosition = ssp.viewport.recastJSPlugin.getClosestPoint(p);
 
-                    document.querySelector('.endText').innerText = JSON.stringify(endPosition)
+                    document.querySelector('.endText').innerText =
+                        JSON.stringify(endPosition);
 
-                    break
+                    break;
             }
-        })
+        });
 
         document.querySelector('.computePath').addEventListener('click', () => {
             if (!startPosition) {
-                alert('请选择起点')
-                return
+                selectState = 'start';
+
+                alert('请选择起点');
+                return;
             }
 
             if (!endPosition) {
-                alert('请选择终点')
-                return
+                selectState = 'end';
+
+                alert('请选择终点');
+                return;
             }
 
-            selectState = null
+            selectState = null;
 
-            const path = ssp.viewport.recastJSPlugin.computePath(startPosition, endPosition);
+            const path = ssp.viewport.recastJSPlugin.computePath(
+                startPosition,
+                endPosition
+            );
 
             if (path && path.length > 0) {
-                document.querySelector('.computeSuccess').innerText = '路径计算成功！'
+                document.querySelector('.computeSuccess').innerText =
+                    '路径计算成功！';
             } else {
-                document.querySelector('.computeSuccess').innerText = '路径计算失败！'
+                document.querySelector('.computeSuccess').innerText =
+                    '路径计算失败！';
             }
 
             const nodes = path.map((path, index) => ({
@@ -148,7 +184,7 @@
                 position: path,
             }));
 
-            ssp.clearTopology()
+            ssp.clearTopology();
 
             ssp.createTopology({
                 id: 'auto_path',
@@ -164,8 +200,49 @@
                     z: 0,
                 },
             });
-        })
+        });
 
+        /**
+         * gui 
+         */
+        const gui = new GUI()
+
+        const naviParams = {
+            helper: true,
+            conditionerY: 2.6,
+            computeArea: () => {
+                ssp.viewport.recastJSPlugin.createNavMesh(undefined, navMeshParams);
+
+                helperChange()
+            }
+        }
+
+        let debugMesh = null
+
+        const helperChange = () => {
+
+            if (debugMesh) ssp.removeObject(debugMesh)
+
+            if (naviParams.helper) {
+                debugMesh = ssp.viewport.recastJSPlugin.createDebugNavMesh();
+            }
+        }
+
+        const conditionerYChange = () => {
+            const airConditioners = ssp.getObjectByName('中央空调')
+
+            airConditioners.forEach(airConditioner => {
+                airConditioner.position.y = naviParams.conditionerY
+            })
+            ssp.render()
+        }
+        conditionerYChange()
+
+        naviParams.computeArea()
+
+        gui.add(naviParams, 'helper').name('导航区域').onChange(helperChange)
+        gui.add(naviParams, 'conditionerY', 1, 4.3, 0.1).name('空调高度').onChange(conditionerYChange)
+        gui.add(naviParams, 'computeArea').name('重新计算导航区域')
     </script>
 </body>
 
